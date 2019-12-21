@@ -152,9 +152,9 @@
                 
                 // Add Parsed Titles:
                 if ( options.addTitles && ParsedName.name != undefined ) {
-									if ( type == 'movie' ) {
+									if ( ParsedName.type == 'movie' ) {
 										title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '');
-									} else if ( type == 'series' ) { 
+									} else if ( ParsedName.type == 'series' ) { 
 										title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '') + (ParsedName.season && ' S' + ParsedName.season) + (ParsedName.episode && ' E' + ParsedName.episode)
 									}
                 }
