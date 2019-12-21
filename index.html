@@ -152,7 +152,11 @@
                 
                 // Add Parsed Titles:
                 if ( options.addTitles && ParsedName.name != undefined ) {
-                  title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '');
+									if ( type == 'movie' ) {
+										title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '');
+									} else if ( type == 'series' ) { 
+										title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '') + (ParsedName.season && ' S' + ParsedName.season) + (ParsedName.episode && ' E' + ParsedName.episode)
+									}
                 }
               }
               if ( allow ) {
