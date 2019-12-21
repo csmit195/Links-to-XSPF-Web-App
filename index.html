@@ -1,0 +1,280 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Converter</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/3.1.0/mustache.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/js/toastr.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.48.4/codemirror.min.js" integrity="sha256-dPTL2a+npIonoK5i0Tyes0txCMUWZBf8cfKRfACRotc=" crossorigin="anonymous"></script>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/css/toastr.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.48.4/codemirror.min.css" integrity="sha256-vZ3SaLOjnKO/gGvcUWegySoDU6ff33CS5i9ot8J9Czk=" crossorigin="anonymous" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.48.4/theme/pastel-on-dark.min.css" integrity="sha256-VUnPtGtiUwEqD7klqFHX56HCmWuinrmYcqh3juZMnvg=" crossorigin="anonymous" />
+    <link rel="stylesheet" type="text/css" href="https://meyerweb.com/eric/tools/css/reset/reset.css">
+    <link href="https://fonts.googleapis.com/css?family=Poppins&display=swap" rel="stylesheet">
+    
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        background-color: #1d1d1d;
+        color: orange;
+        font-family: Poppins, sans-serif;
+      }
+      body,html {
+        height: 100%;
+      }
+      #container {
+        height: 100%;
+      }
+      #container > aside {
+        height: 45px;
+      }
+      #container > aside * {
+        height: 45px;
+        line-height: 45px;
+        vertical-align: middle
+      }
+      #container p {
+        display: inline-block;
+        padding: 0 20px;
+      }
+      #container h1 {
+        font-size: 1.2em;
+        font-weight: 600890;
+        display:inline-block;
+        height: 40px;
+        padding: 0 30px;
+        line-height: 40px;
+      }
+      .CodeMirror {
+        width: 100%;
+        height: calc(100% - 45px);
+      }
+      #download-button {
+        background-color: orange;
+        color: black;
+        display: inline-block;
+        padding: 0 20px;
+        font-weight: 100;
+        text-decoration: none;
+        z-index: 9999;
+      }
+    </style>
+  </head>
+  <body>    
+    <section id="container">
+      <aside>
+        <h1>Links to XPSF Generator</h1>
+        <a id="download-button" onclick="generate();" href="#">Generate</a>
+        <p>Coded poorly for a one-time use, hope you use of it.</p>
+      </aside>
+      <textarea id="text"></textarea>
+    </section>
+    
+    <script id="template" type="x-tmpl-mustache"><?xml version="1.0" encoding="UTF-8"?>
+<playlist xmlns="http://xspf.org/ns/0/" xmlns:vlc="http://www.videolan.org/vlc/playlist/ns/0/" version="1">
+  <title>{{total}} Links</title>
+  <trackList>
+    {{#files}}
+      <track>
+        {{#title}}<title>{{title}}</title>{{/title}}
+        <location>{{ url }}</location>
+        <extension application="http://www.videolan.org/vlc/playlist/0">
+          <vlc:id>{{ id }}</vlc:id>
+        </extension>
+      </track>
+    {{/files}}
+  </trackList>
+  <extension application="http://www.videolan.org/vlc/playlist/0">
+    {{#files}}
+      <vlc:item tid="{{ id }}"/>
+    {{/files}}
+  </extension>
+</playlist></script>
+    
+    <script type="text/javascript">
+      var template = $('#template');
+      var CodeMirror = CodeMirror.fromTextArea($('#text')[0], {
+        lineNumbers: true,
+        theme: 'pastel-on-dark'
+      });
+      var options = {
+        parseFileNames: true,
+        onlyAllowParsable: false,
+        removeDuplicates: {
+          enable: true,
+          onlyAllowYear: false
+        },
+        addTitles: true
+      }
+      
+      function generate(){
+        var Contents = CodeMirror.getValue();
+        toastr.info('Validating Links...')
+        var lines = Contents.split('\n');
+        var files = [];
+        var duplicates = {};
+        var failed = false;
+        for(var i = 0;i < lines.length;i++){
+          var line = lines[i];
+          if ( !isValidURL(line) ) {
+						console.log('line:', i+1, ':', line);
+            failed = true;
+            break;
+          } else {
+            if ( isVideoFile(line) ) {
+              var ParsedURL = new URL(line);
+              var FileName = unescape(ParsedURL.pathname.split('/').pop());
+              var allow = true;
+              var title = false;
+              if ( options.parseFileNames ) {
+                var ParsedName = parseVideoName(unescape(FileName));
+                
+                // Only Allow Parsable File Names
+                if ( options.onlyAllowParsable && ParsedName.name == undefined ) {
+                  allow = false;
+                }
+                
+                // Remove Duplicates is Dependant on File Name Parsing, Only applies if the YEAR is specified.
+                if ( options.removeDuplicates.enable && (options.removeDuplicates.onlyAllowYear && ParsedName.year || true) ) {
+                  var SecureName = ParsedName.name;
+                  if ( options.removeDuplicates.onlyAllowYear ) {
+                    SecureName = ParsedName.name + ParsedName.year;
+                  }
+                  if ( duplicates[SecureName]  ) {
+                    allow = false;
+                  } else {
+                    duplicates[SecureName] = 0;
+                  }
+                  duplicates[SecureName]++;
+                }
+                
+                // Add Parsed Titles:
+                if ( options.addTitles && ParsedName.name != undefined ) {
+                  title = titleCase(ParsedName.name) + (ParsedName.year && ' (' + ParsedName.year + ')' || '');
+                }
+              }
+              if ( allow ) {
+                files.push({id:i, title: title, url:(ParsedURL.origin + escape(unescape(ParsedURL.pathname)))});
+              }
+            }
+          }
+        }
+        if ( failed ) {
+          toastr.error('Woah, those links dont appear to be links!?');
+        } else {
+          toastr.info('Filtered out '+(lines.length - files.length)+' duplicates.');
+          toastr.info('Links are Valid... Trying to render file.');
+          render(files);
+        }
+      }
+      
+      Mustache.escape = function(content){ return content; }
+      
+      function render(files){
+        var data = {
+          files: files,
+          total: files.length
+        };
+        
+        var rendered = Mustache.render(template.html(), data);
+        downloade(data.total+' Links.xspf', rendered)
+        toastr.success('Success! Download the file.');
+      }
+      
+      function isVideoFile(file){
+        return (file.match(/\.(mp4|avi|mkv)$/) && true || false);
+      }
+      
+      function titleCase(str) {
+        return str.replace(/(^|\s)\S/g, function(t) { return t.toUpperCase() });
+      }
+      
+      function getLocation(href) {
+        var l = document.createElement("a");
+        l.href = href;
+        return l;
+      }
+      
+      function download(filename, text) {
+        var element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+      }
+      
+      function downloade (filename, data) {
+        var blob = new Blob([data], {type: 'application/xspf+xml'});
+        if(window.navigator.msSaveOrOpenBlob) {
+          window.navigator.msSaveBlob(blob, filename);
+        }
+        else{
+          var elem = window.document.createElement('a');
+          elem.href = window.URL.createObjectURL(blob);
+          elem.download = filename;        
+          document.body.appendChild(elem);
+          elem.click();        
+          document.body.removeChild(elem);
+        }
+      }
+      
+      window.isValidURL = (function() {// wrapped in self calling function to prevent global pollution
+				 //URL pattern based on rfc1738 and rfc3986
+				var rg_pctEncoded = "%[0-9a-fA-F]{2}";
+				var rg_protocol = "(http|https):\\/\\/";
+
+				var rg_userinfo = "([a-zA-Z0-9$\\-_.+!*'(),;:&=]|" + rg_pctEncoded + ")+" + "@";
+
+				var rg_decOctet = "(25[0-5]|2[0-4][0-9]|[0-1][0-9][0-9]|[1-9][0-9]|[0-9])"; // 0-255
+				var rg_ipv4address = "(" + rg_decOctet + "(\\." + rg_decOctet + "){3}" + ")";
+				var rg_hostname = "([a-zA-Z0-9\\-\\u00C0-\\u017F]+\\.)+([a-zA-Z]{2,})";
+				var rg_port = "[0-9]+";
+
+				var rg_hostport = "(" + rg_ipv4address + "|localhost|" + rg_hostname + ")(:" + rg_port + ")?";
+
+				// chars sets
+				// safe           = "$" | "-" | "_" | "." | "+"
+				// extra          = "!" | "*" | "'" | "(" | ")" | ","
+				// hsegment       = *[ alpha | digit | safe | extra | ";" | ":" | "@" | "&" | "=" | escape ]
+				var rg_pchar = "a-zA-Z0-9$\\-_.+!*'(),;:@&=";
+				var rg_segment = "([" + rg_pchar + "]|" + rg_pctEncoded + ")*";
+
+				var rg_path = rg_segment + "(\\/" + rg_segment + ")*";
+				var rg_query = "\\?" + "([" + rg_pchar + "/?]|" + rg_pctEncoded + ")*";
+				var rg_fragment = "\\#" + "([" + rg_pchar + "/?]|" + rg_pctEncoded + ")*";
+
+				var rgHttpUrl = new RegExp( 
+						"^"
+						+ rg_protocol
+						+ "(" + rg_userinfo + ")?"
+						+ rg_hostport
+						+ "(\\/"
+						+ "(" + rg_path + ")?"
+						+ "(" + rg_query + ")?"
+						+ "(" + rg_fragment + ")?"
+						+ ")?"
+						+ "$"
+				);
+
+				// export public function
+				return function (url) {
+						if (rgHttpUrl.test(url)) {
+								return true;
+						} else {
+								return false;
+						}
+				};
+		})();
+    </script>
+    <script>
+      var maxSegments=3,movieKeywords=["1080p","720p","480p","blurayrip","brrip","divx","dvdrip","hdrip","hdtv","tvrip","xvid","camrip"],excluded={};movieKeywords.forEach(function(e){excluded[e]=1});var SEGMENTS_SPLIT=/\.| |-|;|_/g,MATCH_FILES=/.mp4$|.mkv$|.avi$/,minYear=1900,maxYear=2030;function simplifyName(e){return e.toLowerCase().trim().replace(/\([^\(]+\)$/,"").replace(/&/g,"and").replace(/[^0-9a-z ]+/g," ").split(" ").filter(function(e){return e}).join(" ")}function parseVideoName(e,a){a=a||{};var r={},i=e.replace(/\\/g,"/").split("/").reverse().filter(function(e){return e}).slice(0,maxSegments),t=i[0].split(/\.| |_/);function n(){return r.hasOwnProperty("season")&&!isNaN(r.season)}function s(){return Array.isArray(r.episode)&&r.episode.length}[i[0],i[1]].filter(function(e){return e}).forEach(function(e){for(var a,i=/\b\d{4}\b/g;a=i.exec(e);){var t=parseInt(a[0],10);t>=minYear&&t<=maxYear&&(r.year=t)}});var o=function(e){return("00"+e).slice(-2)};[i[0],i[1]].filter(function(e){return e}).forEach(function(e){var a=e.match(/(\d\d\d\d)(\.|-| )(\d\d)(\.|-| )(\d\d)/);if(a&&a[1]){var i=parseInt(a[1],10);i>=minYear&&i<=maxYear&&(r.aired=[i,o(a[3]),o(a[5])].join("-"))}}),[i[0],i[1]].forEach(function(e){e&&e.split(/\.| |_/).forEach(function(e,a){var i=e.match(/S(\d{1,2})/i);i&&(r.season=parseInt(i[1],10));var t=e.match(/E(\d{2})/gi);t&&(r.episode=t.map(function(e){return parseInt(e.slice(1),10)}));var n=e.match(/(\d\d?)x(\d\d?)/i);n&&(r.season=parseInt(n[1],10),r.episode=[parseInt(n[2],10)])});var a=e&&e.replace(/\.| |;|_/g," ").match(/^([a-zA-Z0-9,-?!'& ]*) S(\d{1,2})E(\d{2})/i);!r.name&&r.season&&r.episode&&a&&a[1]&&(r.name=a[1])});var d=i[0].match(/[^\da-zA-Z](\d\d?)\.(\d\d?)[^\da-zA-Z]/i);if(n()&&s()||!d||r.year||(r.season=parseInt(d[1],10),r.episode=[parseInt(d[2],10)]),!(n()&&s()||a.strict)){var p=t.reverse().map(function(e){return e.match(new RegExp("\\d\\d\\d\\d?e"))&&(e=e.slice(0,-1)),e.match(new RegExp("s\\d\\d\\d\\d?"))&&(e=e.slice(1)),e}).filter(function(e){return!isNaN(e)&&(3==e.length||!r.year&&4==e.length)})[0];p&&(!r.year||r.year&&t.indexOf(p.toString())<t.indexOf(r.year.toString()))&&(r.episode=[parseInt(p.slice(-2),10)],r.season=parseInt(p.slice(0,-2),10))}if(!n()){var c=i.join("/").match(/season(\.| )?(\d{1,2})/gi);c&&(r.season=parseInt(c[0].match(/\d/g).join(""),10));var m=i.join("/").match(/Season (\d{1,2}) - (\d{1,2})/i);m&&(r.season=parseInt(m[1],10),r.episode=[parseInt(m[2],10)])}if(!s()){var h=i.join("/").match(/ep(isode)?(\.| )?(\d+)/gi);h&&(r.episode=[parseInt(h[0].match(/\d/g).join(""),10)])}var f,l,u=i[0].match(/[ _.-]*(?:cd|dvd|p(?:ar)?t|dis[ck]|d)[ _.-]*(\d)[^\d]/);return u&&(r.diskNumber=parseInt(u[1],10)),(a.fromInside?i:[].concat(i).reverse()).forEach(function(e,a){if(e==i[0]){var t=(e=e.split(".").slice(0,-1).join(".")).match(/^\[(.*?)\]/);t&&(e=e.slice(t[0].length))}var n=e.indexOf("[");n>-1&&(e=e.slice(0,n));var s=e.split(SEGMENTS_SPLIT),o=[];(f=f||e.match(/^sample/i)||e.match(/^etrg/i),r.name)||(s.some(function(e,a){if(a,!(e.match("^[a-zA-Z,?!'&]*$")||!isNaN(e)&&e.length<=2||!isNaN(e)&&0==a)||excluded[e.toLowerCase()]||["ep","episode","season"].indexOf(e.toLowerCase())>-1&&!isNaN(s[a+1]))return!0;o.push(e)}),(1!=o.length||isNaN(o[0]))&&(r.name=o.filter(function(e){return e&&e.length>0}).map(function(e){return e[0].toUpperCase()+e.slice(1).toLowerCase()}).join(" ")))}),f=f||"sample"==(i[1]||"").toLowerCase(),l=a.strict?r.hasOwnProperty("year"):r.hasOwnProperty("year")||r.hasOwnProperty("diskNumber")||movieKeywords.some(function(e){return i.join("/").toLowerCase().search(e)>-1}),r.name&&r.aired&&(r.type="series"),r.name&&n()&&s()?r.type="series":r.name&&l?r.type="movie":"movie"!=r.type&&r.name&&n()?r.type="extras":r.type="other",a.fileLength&&a.fileLength<1024*(r.type.match(/movie/)?80:50)*1024&&r.type.match(/movie|series/)&&!f&&(r.type="other"),("series"!=r.type||r.aired)&&(delete r.episode,delete r.season),"series"==r.type&&r.year&&(r.aired=r.aired||r.year,delete r.year),r.type+=f?"-sample":"",r.name=r.name&&simplifyName(r.name),a.hints&&a.hints.imdb_id&&(r.imdb_id=a.hints.imdb_id),r.tag=[],e.match(/1080p/i)&&(r.tag.push("hd"),r.tag.push("1080p")),e.match(/720p/i)&&r.tag.push("720p"),e.match(/480p/i)&&r.tag.push("480p"),f&&r.tag.push("sample"),r}
+    </script>
+  </body>
+</html>
